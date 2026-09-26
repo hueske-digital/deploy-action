@@ -1,0 +1,17 @@
+# The deploy hook of a stack "demo" as hueske-digital/infrastructure writes
+# it (stacks/webhook/files/hooks.yaml); SECRET is replaced by the test.
+- id: deploy-demo
+  execute-command: /bin/touch
+  pass-arguments-to-command:
+    - source: string
+      name: /tmp/deploy-demo
+  response-message: accepted
+  success-http-response-code: 202
+  trigger-rule-mismatch-http-response-code: 403
+  trigger-rule:
+    match:
+      type: payload-hmac-sha256
+      secret: SECRET
+      parameter:
+        source: header
+        name: X-Hub-Signature-256

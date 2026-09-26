@@ -1,0 +1,89 @@
+# .github/workflows/deploy.yml of a site's repository: on every push to main
+# builds the image natively on an amd64 and an arm64 runner in parallel,
+# pushes both by digest, joins them into ghcr.io/<owner>/<repository>
+# :latest and :sha-<commit> (in lower case), and then asks the host to
+# deploy it. The stack's entry names the image with :latest and has
+# deploy: true.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# One deploy at a time; a newer push waits for the one before.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # A run started by hand deploys main too, never another branch.
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        include:
+          - { platform: linux/amd64, arch: amd64, runner: ubuntu-26.04 }
+          - { platform: linux/arm64, arch: arm64, runner: ubuntu-26.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      # An image name is lower case; the repository's name may not be.
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Without a checkout: build-push-action builds the pushed commit.
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Keep the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir digests && touch "digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Join both architectures
+        env:
+          SHA: ${{ github.sha }}
+        working-directory: digests
+        run: |
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:sha-${SHA:0:7}" "${sources[@]}"
+      - uses: hueske-digital/deploy-action@<commit sha> # v1
+        with:
+          url: ${{ vars.DEPLOY_URL }}
+          secret: ${{ secrets.DEPLOY_SECRET }}

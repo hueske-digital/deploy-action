@@ -1,0 +1,12 @@
+name: Deploy hook
+description: Asks a hueske-digital host to deploy a stack's new image, through the stack's deploy hook.
+inputs:
+  url:
+    description: The stack's deploy hook, https://<wan name of its host>/hooks/deploy-<stack>.
+    required: true
+  secret:
+    description: The stack's <stack>_deploy_secret, from a repository secret.
+    required: true
+runs:
+  using: node24
+  main: deploy.mjs
