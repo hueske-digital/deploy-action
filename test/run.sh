@@ -24,8 +24,8 @@ done
 
 failed=0
 expect() {
-  local want=$1 name=$2 url=$3 key=$4 got=0
-  INPUT_URL=$url INPUT_SECRET=$key node deploy.mjs || got=$?
+  local want=$1 name=$2 host=$3 stack=$4 key=$5 got=0
+  INPUT_HOST=$host INPUT_STACK=$stack INPUT_SECRET=$key node deploy.mjs || got=$?
   if { [ "$want" = ok ] && [ "$got" -ne 0 ]; } || { [ "$want" = fail ] && [ "$got" -eq 0 ]; }; then
     echo "FAILED: $name"
     failed=1
@@ -33,12 +33,17 @@ expect() {
     echo "ok: $name"
   fi
 }
-hook=http://localhost:9000/hooks/deploy-demo
-expect ok "right secret" "$hook" "$secret"
+host=localhost:9000
+expect ok "right secret" "$host" demo "$secret"
 docker exec deploy-action-test test -e /tmp/deploy-demo || { echo "FAILED: no marker"; failed=1; }
-expect fail "wrong secret" "$hook" "$(openssl rand -hex 32)"
-expect fail "unknown hook" http://localhost:9000/hooks/deploy-other "$secret"
-expect fail "http to another host" http://example.org/hooks/deploy-demo "$secret"
-expect fail "other path" http://localhost:9000/hooks/apply "$secret"
-expect fail "short secret" "$hook" abc
+expect ok "127.0.0.1" 127.0.0.1:9000 demo "$secret"
+expect fail "wrong secret" "$host" demo "$(openssl rand -hex 32)"
+expect fail "host with a login" "user@$host" demo "$secret"
+expect fail "port out of range" localhost:99999 demo "$secret"
+expect fail "unknown stack" "$host" other "$secret"
+expect fail "host with a scheme" "http://$host" demo "$secret"
+expect fail "host with a path" "$host/hooks" demo "$secret"
+expect fail "stack in capitals" "$host" Demo "$secret"
+expect fail "stack with a path" "$host" "demo/../apply" "$secret"
+expect fail "short secret" "$host" demo abc
 exit "$failed"

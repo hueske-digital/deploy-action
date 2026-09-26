@@ -1,15 +1,18 @@
-# .github/workflows/deploy.yml of a site's repository: on every push to main
-# builds the image natively on an amd64 and an arm64 runner in parallel,
-# pushes both by digest, joins them into ghcr.io/<owner>/<repository>
-# :latest and :sha-<commit> (in lower case), and then asks the host to
-# deploy it. The stack's entry names the image with :latest and has
-# deploy: true.
+# .github/workflows/deploy.yml of a site's repository. On every pushed tag
+# v* (git tag v1.2.0 && git push origin v1.2.0):
+#   build   the image for amd64 and arm64 in parallel, each on its own runner,
+#           pushed by digest only
+#   merge   both digests into one image, ghcr.io/<owner>/<repository>:latest
+#           and :<tag>
+#   deploy  asks the host to pull :latest
+# The stack's entry names the image with :latest and has deploy: true.
+# Settings of the repository: the variable DEPLOY_HOST (the wan name of the
+# stack's host) and the secret DEPLOY_SECRET (<stack>_deploy_secret).
 name: deploy
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -22,8 +25,6 @@ concurrency:
 
 jobs:
   build:
-    # A run started by hand deploys main too, never another branch.
-    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         include:
@@ -40,14 +41,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Without a checkout: build-push-action builds the pushed commit.
+      # Without a checkout: build-push-action builds the tagged commit.
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-      - name: Keep the digest
-        env:
+      # Jobs share no files: each digest goes to merge as an artifact.
+      - env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: mkdir digests && touch "digests/${DIGEST#sha256:}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -57,9 +58,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  deploy:
+  merge:
     needs: build
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -75,15 +75,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Join both architectures
-        env:
-          SHA: ${{ github.sha }}
-        working-directory: digests
+      # The tag's name is a valid image tag as long as it holds only
+      # letters, digits, . _ and -.
+      - working-directory: digests
         run: |
           sources=()
           for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
-          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:sha-${SHA:0:7}" "${sources[@]}"
-      - uses: hueske-digital/deploy-action@b1aadf52d3100ed997af585f6e76ef2ec0da2d3f # v1.0.0
+          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:$GITHUB_REF_NAME" "${sources[@]}"
+
+  deploy:
+    needs: merge
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: hueske-digital/deploy-action@<commit sha> # v1.0.0
         with:
-          url: ${{ vars.DEPLOY_URL }}
+          host: ${{ vars.DEPLOY_HOST }}
+          stack: kunde
           secret: ${{ secrets.DEPLOY_SECRET }}

@@ -1,8 +1,11 @@
 name: Deploy hook
 description: Asks a hueske-digital host to deploy a stack's new image, through the stack's deploy hook.
 inputs:
-  url:
-    description: The stack's deploy hook, https://<wan name of its host>/hooks/deploy-<stack>.
+  host:
+    description: The wan name of the stack's host, like wan.htz1.wontfix.xyz (from a repository variable).
+    required: true
+  stack:
+    description: The stack's name in the host's list, like kunde.
     required: true
   secret:
     description: The stack's <stack>_deploy_secret, from a repository secret.

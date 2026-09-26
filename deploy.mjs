@@ -4,7 +4,8 @@
 // took the call; whether the deploy worked is reported to its monitoring.
 import { createHmac } from "node:crypto";
 
-const url = process.env.INPUT_URL ?? "";
+const host = (process.env.INPUT_HOST ?? "").trim();
+const stack = (process.env.INPUT_STACK ?? "").trim();
 const secret = process.env.INPUT_SECRET ?? "";
 
 function fail(message) {
@@ -12,22 +13,21 @@ function fail(message) {
   process.exit(1);
 }
 
-let target;
-try {
-  target = new URL(url);
-} catch {
-  fail("url is no URL; it is https://<wan name of the host>/hooks/deploy-<stack>");
+// A host name with an optional port, nothing else; the stack's name as the
+// host's list allows it.
+if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$|^\[::1\](:[0-9]{1,5})?$/.test(host)) {
+  fail("host is the wan name of the stack's host, like wan.htz1.wontfix.xyz, without https:// or a path; is the repository variable set?");
+}
+if (!/^[a-z][a-z0-9-]{0,31}$/.test(stack)) {
+  fail("stack is the stack's name in the host's list, like kunde");
 }
 // Plain http only to this machine, for tests.
-const local = ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname);
-if (target.protocol !== "https:" && !(target.protocol === "http:" && local)) {
-  fail("url must be https");
-}
-if (target.username || target.password) {
-  fail("url holds no login; the secret signs the call");
-}
-if (!/^\/hooks\/deploy-[a-z][a-z0-9-]*$/.test(target.pathname) || target.search || target.hash) {
-  fail("url is https://<wan name of the host>/hooks/deploy-<stack>, without a query");
+const local = ["localhost", "127.0.0.1", "[::1]"].includes(host.replace(/:[0-9]+$/, ""));
+let target;
+try {
+  target = new URL(`${local ? "http" : "https"}://${host}/hooks/deploy-${stack}`);
+} catch {
+  fail(`host ${host} is no host name with a valid port`);
 }
 if (secret.length < 32) {
   fail("secret is empty or shorter than 32 characters; is the repository secret set?");
@@ -74,8 +74,8 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
   }
   const hint = {
     403: "the request was not signed",
-    404: "the host has no such hook: is deploy: true in the stack's entry, and the host right?",
-    500: "the signature does not match: is the secret the stack's <stack>_deploy_secret?",
+    404: `${host} has no deploy hook for ${stack}: is deploy: true in its entry there, and the host right?`,
+    500: `the signature does not match: is the secret ${stack}_deploy_secret of ${host}?`,
   }[response.status];
   fail(`${target.pathname} answered ${response.status}${hint ? `, ${hint}` : ""}: ${text}`);
 }
