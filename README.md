@@ -9,7 +9,7 @@ webhooks (HMAC-SHA256 of the body with the stack's secret, header
 
 ```yaml
       # after the image was pushed
-      - uses: hueske-digital/deploy-action@<commit sha> # v1
+      - uses: hueske-digital/deploy-action@b1aadf52d3100ed997af585f6e76ef2ec0da2d3f # v1.0.0
         with:
           url: ${{ vars.DEPLOY_URL }}
           secret: ${{ secrets.DEPLOY_SECRET }}
