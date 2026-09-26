@@ -89,7 +89,7 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
-      - uses: hueske-digital/deploy-action@<commit sha> # v1.0.0
+      - uses: hueske-digital/deploy-action@2e880357b6dcbb764f0c1a7c936fd086be5b4410 # v1.0.0
         with:
           host: ${{ vars.DEPLOY_HOST }}
           stack: kunde

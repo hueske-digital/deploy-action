@@ -9,7 +9,7 @@ to deploy a stack's new image: a POST to the stack's deploy hook
 
 ```yaml
       # after the image was pushed
-      - uses: hueske-digital/deploy-action@<commit sha> # v1.0.0
+      - uses: hueske-digital/deploy-action@2e880357b6dcbb764f0c1a7c936fd086be5b4410 # v1.0.0
         with:
           host: ${{ vars.DEPLOY_HOST }}   # the wan name of the stack's host
           stack: kunde                    # the stack's name in the host's list
