@@ -10,6 +10,18 @@ inputs:
   secret:
     description: The stack's <stack>_deploy_secret, from a repository secret.
     required: true
+  health-url:
+    description: Optional. A page of the stack that tells its version, like https://kunde.de/api/health; after the hook took the call, it is asked until it answers health-json.
+    required: false
+    default: ''
+  health-json:
+    description: 'The fields health-url must answer with, as a JSON object; "{commit}" stands for the run''s commit (its first 7 characters or more). Without it, the page must answer 200.'
+    required: false
+    default: ''
+  health-timeout:
+    description: How many seconds health-url is asked before the step fails.
+    required: false
+    default: '600'
 runs:
   using: node24
   main: deploy.mjs
